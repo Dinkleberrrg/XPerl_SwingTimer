@@ -1,0 +1,10 @@
+## Interface: 11200
+## Title: X-Perl |cFF40FF40SwingTimer|r
+## Notes: Swing-Timer fuer Haupthand, Schildhand, Fernkampf und Ziel. Doeckt an die XPerl-Unitframes an.|nKonfiguration: /xps  oder Knopf in den XPerl-Optionen.
+## Author: abgeleitet von AttackBar (Udokus / Siventt)
+## Version: 1.0
+## RequiredDeps: XPerl
+## SavedVariables: XPerlSwingConfig
+
+XPerl_SwingTimer.lua
+XPerl_SwingTimer_Options.lua
