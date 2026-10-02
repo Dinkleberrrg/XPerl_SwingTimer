@@ -1,26 +1,26 @@
 # X-Perl SwingTimer
 
-Eigenständiges Zusatzmodul für X-Perl UnitFrames (WoW 1.12): Swing-Timer für Haupthand, Schildhand, Fernkampf und das Ziel, angedockt an die XPerl-Frames.
+Standalone add-on module for X-Perl UnitFrames (WoW 1.12): swing timers for main hand, off hand, ranged and your target, docked to the X-Perl frames.
 
-## Funktionen
-- Leisten für Haupthand, Schildhand (Beidhandkampf) und Fernkampf/Wurf/Zauberstab
-- Swing-Timer des Ziels, getrennt schaltbar für Kreaturen und feindliche Spieler
-- Andocken an `XPerl_Player` und `XPerl_Target` oder frei platzierbar
-- Breite automatisch vom Unitframe oder fest einstellbar, Höhe und Abstände einstellbar
-- Optional nur im Kampf einblenden
+## Features
+- Bars for main hand, off hand (dual wield) and ranged/thrown/wand
+- Target swing timer, switchable separately for creatures and enemy players
+- Docks to `XPerl_Player` and `XPerl_Target` or can be placed freely
+- Width taken from the unit frame or fixed; height and spacing adjustable
+- Optionally shown only in combat
 
-## Bedienung
-- `/xps` öffnet die Einstellungen.
-- Alternativ über den Knopf in den XPerl-Optionen.
+## Usage
+- `/xps` opens the settings.
+- Alternatively use the button in the X-Perl options.
 
-## Wie es funktioniert
-Die Erkennung ist von [AttackBar](https://github.com/Siventt/AttackBar) abgeleitet, braucht AttackBar aber nicht. Vanilla hat kein Swing-Ereignis, deshalb wird jeder eigene Nahkampftreffer oder -fehlschlag im Kampflog als Start eines Swings gewertet. Die Balkenlänge kommt aus `UnitAttackSpeed()`.
+## How it works
+Detection is derived from [AttackBar](https://github.com/Siventt/AttackBar) but does not need AttackBar. Vanilla has no swing event, so every own melee hit or miss in the combat log counts as the start of a swing. The bar length comes from `UnitAttackSpeed()`.
 
-## Voraussetzungen
+## Requirements
 XPerl
 
-## Gespeicherte Daten
+## Saved data
 `XPerlSwingConfig`
 
-## Hinweis
-Ersetzt `AttackBarXPerl`. Beide gleichzeitig zu nutzen ergibt doppelte Leisten.
+## Note
+Replaces `AttackBarXPerl`. Using both at the same time gives duplicate bars.
