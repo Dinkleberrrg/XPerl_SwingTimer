@@ -8,6 +8,10 @@
 -- event, so every own melee hit in the combat log is treated as
 -- "a swing just started", and the weapon speed from UnitAttackSpeed()
 -- is used as the bar length.
+--
+-- With SuperWoW the client reports every real swing per hand
+-- (UNIT_CASTEVENT MAINHAND/OFFHAND), so no guessing is needed there.
+-- Without SuperWoW, or with the option off, the combat log is used.
 --=====================================================================
 
 XPerl_SwingTimer = {}
@@ -19,6 +23,7 @@ local TEX_FLAT  = "Interface\\Buttons\\WHITE8X8"
 XPS.defaults = {
     enabled        = 1,   -- module active
     combatOnly     = 0,   -- only show the bars in combat
+    useSuperWoW    = 1,   -- exact detection via SuperWoW if it is installed
 
     showMainhand   = 1,   -- main hand
     showOffhand    = 1,   -- off hand (only useful when dual wielding)
@@ -503,6 +508,54 @@ function XPS:Reset()
     if self.built then HideIfRunning(self.mh); HideIfRunning(self.oh); HideIfRunning(self.tb) end
 end
 
+--------------------------------------------------------------------- SuperWoW
+function XPS:UseSuperWoW()
+    return SUPERWOW_VERSION and self:Get("useSuperWoW") == 1
+end
+
+local function Guid(unit)
+    local _, guid = UnitExists(unit)
+    return guid
+end
+
+-- one real swing of the given hand; hand = "MAINHAND" or "OFFHAND"
+function XPS:HandSwing(hand)
+    local sMH, sOH = UnitAttackSpeed("player")
+    if hand == "OFFHAND" then
+        if sOH and self:Get("showOffhand") == 1 then
+            self:Start(self.oh, sOH, format("Off hand [%.2fs]", sOH), self:Colour("colOH"))
+        end
+    elseif sMH and self:Get("showMainhand") == 1 then
+        self:Start(self.mh, sMH, format("Main hand [%.2fs]", sMH), self:Colour("colMH"))
+    end
+end
+
+-- arg1 caster GUID, arg2 target GUID, arg3 type, arg4 spell ID
+function XPS:CastEvent(caster, kind, spellId)
+    if not caster then return end
+    if caster == Guid("player") then
+        if kind == "MAINHAND" or kind == "OFFHAND" then
+            self:HandSwing(kind)
+        elseif kind == "CAST" and spellId and SpellInfo then
+            local name = SpellInfo(spellId)
+            if not name then return end
+            if onNextSwing[name] then
+                self:HandSwing("MAINHAND")          -- consumes the swing
+            elseif rangedCast[name] then
+                self:RangedSwing(rangedCast[name])
+            end
+        end
+    elseif kind == "MAINHAND" and UnitExists("target") and caster == Guid("target")
+        and UnitCanAttack("player", "target") then
+        -- unlike the combat log this also sees swings at other players
+        local key = UnitIsPlayer("target") and "showTargetPvP" or "showTargetMob"
+        if self:Get(key) == 0 then return end
+        local speed = UnitAttackSpeed("target")
+        if not speed or speed <= 0 then return end
+        self:Start(self.tb, speed, format("%s [%.2fs]", UnitName("target"), speed), self:Colour("colTarget"))
+    end
+end
+
 --------------------------------------------------------------------- Events
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("VARIABLES_LOADED")
@@ -517,6 +570,7 @@ ev:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES")
 ev:RegisterEvent("CHAT_MSG_COMBAT_HOSTILEPLAYER_HITS")
 ev:RegisterEvent("CHAT_MSG_COMBAT_HOSTILEPLAYER_MISSES")
 ev:RegisterEvent("UNIT_SPELLCAST_SENT")
+ev:RegisterEvent("UNIT_CASTEVENT")
 
 ev:SetScript("OnEvent", function()
     if event == "VARIABLES_LOADED" then
@@ -540,6 +594,14 @@ ev:SetScript("OnEvent", function()
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         XPS:ApplyLayout()
+
+    elseif event == "UNIT_CASTEVENT" then
+        if XPS:UseSuperWoW() then XPS:CastEvent(arg1, arg3, arg4) end
+
+    -- everything below is the combat log fallback
+    elseif XPS:UseSuperWoW() and event ~= "PLAYER_LEAVE_COMBAT"
+        and event ~= "PLAYER_TARGET_CHANGED" then
+        return
 
     elseif event == "PLAYER_LEAVE_COMBAT" then
         XPS:Reset()

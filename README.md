@@ -16,10 +16,12 @@ Standalone add-on module for X-Perl UnitFrames (WoW 1.12): swing timers for main
 - `/xps reset` docks both bars to the X-Perl frames again.
 
 ## How it works
-Detection is derived from [AttackBar](https://github.com/Siventt/AttackBar) but does not need AttackBar. Vanilla has no swing event, so every own melee hit or miss in the combat log counts as the start of a swing. The bar length comes from `UnitAttackSpeed()`.
+**With SuperWoW** (optional, option "Use SuperWoW"): the client reports every real swing per hand (`UNIT_CASTEVENT` MAINHAND/OFFHAND). Main hand and off hand are exact, and the target bar also runs when your target attacks someone else.
+
+**Without SuperWoW:** Detection is derived from [AttackBar](https://github.com/Siventt/AttackBar) but does not need AttackBar. Vanilla has no swing event, so every own melee hit or miss in the combat log counts as the start of a swing. The bar length comes from `UnitAttackSpeed()`.
 
 ## Requirements
-XPerl
+XPerl. SuperWoW is optional.
 
 ## Saved data
 `XPerlSwingConfig`

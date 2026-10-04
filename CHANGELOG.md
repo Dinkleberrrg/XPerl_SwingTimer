@@ -2,6 +2,10 @@
 
 Versions follow `MAJOR.MINOR.PATCH`. Each release is a git tag `v<version>`; older versions can be downloaded from the tag page on GitHub.
 
+## 1.3.0 – 2026-10-04
+- Optional SuperWoW support (option "Use SuperWoW", on by default): every real swing is reported per hand, so main hand and off hand are exact instead of guessed, Heroic Strike & co. and ranged shots come from the actual cast, and the target bar also runs when the target swings at someone else.
+- Without SuperWoW, or with the option off, the combat log detection works as before.
+
 ## 1.2.0 – 2026-10-04
 - Docked bars now sit below the lowest visible X-Perl part instead of the fixed 220x60 main frame: creature type, combo points, stats frame (XP bar, druid mana bar, energy/mana ticker) and target buffs shown below the frame. Previously they could cover these.
 - The dock position follows layout changes on the fly (shapeshift, bars appearing, new buff rows, frame moved); "Distance to frame" is measured from that lowest part.
