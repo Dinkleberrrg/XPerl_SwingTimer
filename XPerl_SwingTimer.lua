@@ -182,7 +182,10 @@ function XPS:StyleBar(bar, w, r, g, b)
 
     -- [patch] MONOCHROME turns off anti-aliasing; this makes the thin
     -- Prototype font sharp instead of blurry.
-    local proto = (self:Get("protoFont") == 1)
+    -- The font lives in ShaguPlates. Without it SetFont fails and every
+    -- SetText afterwards errors with "Font not set" - the OnUpdate then
+    -- aborts and the bar stays frozen on screen.
+    local proto = (self:Get("protoFont") == 1) and IsAddOnLoaded("ShaguPlates")
     local fp = proto and "Interface\\AddOns\\ShaguPlates\\fonts\\Prototype.ttf"
                      or  "Fonts\\FRIZQT__.TTF"
     local fl = proto and "OUTLINE, MONOCHROME" or "OUTLINE"
@@ -364,6 +367,9 @@ function XPS:UpdateLock()
             bar.endTime = nil
             bar:SetMinMaxValues(0, 1); bar:SetValue(0.6)
             bar.label:SetText(text[i]); bar.timer:SetText("")
+            -- otherwise the spark stays where the last swing left it
+            bar.spark:ClearAllPoints()
+            bar.spark:SetPoint("CENTER", bar, "LEFT", 0.6 * bar:GetWidth(), 0)
             bar:Show()
         elseif bar.preview then
             bar.preview = nil
@@ -634,6 +640,27 @@ function XPS:CastEvent(caster, kind, spellId)
     end
 end
 
+--------------------------------------------------------------------- AttackBar
+-- AttackBar (and AttackBarXPerl) are replaced by this add-on. If they are
+-- still enabled, their bars kept popping up next to ours: Abar_Mhr,
+-- Abar_Oh, ebar_mh and ebar_oh sit directly on UIParent and AttackBar
+-- shows them again on every swing. So stop its event frame and keep all
+-- of its frames hidden for good.
+local function KeepHidden(f)
+    if not f then return end
+    f:Hide()
+    f:SetScript("OnShow", function() this:Hide() end)
+end
+
+function XPS:SilenceAttackBar()
+    if not (Abar_Frame or ebar_Frame or abar_core) then return end
+    if abar_core then abar_core:UnregisterAllEvents() end
+    KeepHidden(Abar_Frame); KeepHidden(Abar_Mhr); KeepHidden(Abar_Oh)
+    KeepHidden(ebar_Frame); KeepHidden(ebar_mh);  KeepHidden(ebar_oh)
+    Print("AttackBar is still enabled and has been switched off for this session. "
+       .. "You can disable AttackBar and AttackBarXPerl in the add-on list.")
+end
+
 --------------------------------------------------------------------- Events
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("VARIABLES_LOADED")
@@ -658,17 +685,7 @@ ev:SetScript("OnEvent", function()
         XPS:Build()
         XPS:ApplyLayout()
 
-        -- AttackBar is redundant now; if still installed, silence it
-        if Abar_Frame then
-            Abar_Frame:Hide(); Abar_Frame:SetScript("OnShow", function() this:Hide() end)
-            if Abar_Mhr then Abar_Mhr:Hide() end
-            if Abar_Oh  then Abar_Oh:Hide()  end
-        end
-        if ebar_Frame then
-            ebar_Frame:Hide(); ebar_Frame:SetScript("OnShow", function() this:Hide() end)
-            if ebar_mh then ebar_mh:Hide() end
-            if ebar_oh then ebar_oh:Hide() end
-        end
+        XPS:SilenceAttackBar()
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         XPS:ApplyLayout()

@@ -2,6 +2,12 @@
 
 Versions follow `MAJOR.MINOR.PATCH`. Each release is a git tag `v<version>`; older versions can be downloaded from the tag page on GitHub.
 
+## 1.4.1 – 2026-10-04
+- Fixed: old AttackBar bars kept appearing next to ours when AttackBar / AttackBarXPerl were still enabled. Their bars sit directly on UIParent and AttackBar showed them again on every swing; it is now switched off completely, with a chat hint to disable it.
+- Fixed: "Prototype font" without ShaguPlates installed broke the text ("Font not set" errors) and left bars frozen on screen. It now falls back to the default font.
+- Fixed: the spark of the unlocked placeholder bars stayed where the last swing had left it.
+- Checked with the druid mana bar in cat/bear form (XPerl octo.2): the docked bars move down with it.
+
 ## 1.4.0 – 2026-10-04
 - Options: new buttons "Unlock bars" / "Lock bars" (shows the bars so they can be dragged) and "Demo".
 - Demo (also `/xps demo`): runs swings on all bars for 12 seconds with the current settings and your real weapon speeds, so changes to colours, size, font, spark etc. can be seen live. Afterwards (or when the options are closed) everything goes back to normal.

@@ -151,7 +151,7 @@ local function BuildPanel()
     widgets.spark         = Check(panel, "spark",        "Spark",                    nil, R, -116)
     widgets.showLabel     = Check(panel, "showLabel",    "Label on the left",        "Weapon and speed.", R, -138)
     widgets.showTimer     = Check(panel, "showTimer",    "Time left on the right",   nil, R, -160)
-    widgets.protoFont     = Check(panel, "protoFont",    "Prototype font",           "Off = Blizzard default font.", R, -182)
+    widgets.protoFont     = Check(panel, "protoFont",    "Prototype font",           "Off = Blizzard default font. Needs ShaguPlates, otherwise the default font is used.", R, -182)
 
     widgets.height    = Slider(panel, "height",    "Height",            4,   24, 1, R, -222)
     widgets.width     = Slider(panel, "width",     "Fixed width",       80, 400, 5, R, -260)
