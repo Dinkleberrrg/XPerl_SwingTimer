@@ -1,13 +1,13 @@
 --=====================================================================
 -- X-Perl SwingTimer
 --
--- Eigenstaendiges XPerl-Modul. Braucht AttackBar nicht mehr - die
--- Swing-Erkennung ist hier nachgebaut. Ordner loeschen = weg.
+-- Standalone XPerl module. Does not need AttackBar any more - the swing
+-- detection is rebuilt here. Delete the folder and it is gone.
 --
--- Die Erkennung folgt derselben Idee wie AttackBar: Vanilla hat kein
--- Swing-Event, also wird jeder eigene Nahkampftreffer im Kampflog als
--- "Swing ist gerade losgegangen" gewertet und die Waffengeschwindigkeit
--- aus UnitAttackSpeed() als Balkenlaenge genommen.
+-- Detection follows the same idea as AttackBar: vanilla has no swing
+-- event, so every own melee hit in the combat log is treated as
+-- "a swing just started", and the weapon speed from UnitAttackSpeed()
+-- is used as the bar length.
 --=====================================================================
 
 XPerl_SwingTimer = {}
@@ -17,38 +17,44 @@ local TEX_XPERL = "Interface\\AddOns\\XPerl\\Images\\XPerl_StatusBar"
 local TEX_FLAT  = "Interface\\Buttons\\WHITE8X8"
 
 XPS.defaults = {
-    enabled        = 1,   -- Modul aktiv
-    combatOnly     = 0,   -- Leisten nur im Kampf einblenden
+    enabled        = 1,   -- module active
+    combatOnly     = 0,   -- only show the bars in combat
 
-    showMainhand   = 1,   -- Haupthand
-    showOffhand    = 1,   -- Schildhand (nur beim Beidhandkampf sinnvoll)
-    showRanged     = 1,   -- Fernkampf / Wurf / Zauberstab
-    showTargetMob  = 1,   -- Swing-Timer von Kreaturen
-    showTargetPvP  = 1,   -- Swing-Timer von feindlichen Spielern
+    showMainhand   = 1,   -- main hand
+    showOffhand    = 1,   -- off hand (only useful when dual wielding)
+    showRanged     = 1,   -- ranged / thrown / wand
+    showTargetMob  = 1,   -- swing timer of creatures
+    showTargetPvP  = 1,   -- swing timer of enemy players
 
-    attachPlayer   = 1,   -- an XPerl_Player andocken statt frei stehen
-    attachTarget   = 1,   -- an XPerl_Target andocken
-    autoWidth      = 1,   -- Breite vom Unitframe uebernehmen
-    width          = 200, -- feste Breite, falls autoWidth aus
+    attachPlayer   = 1,   -- dock to XPerl_Player instead of free placement
+    attachTarget   = 1,   -- dock to XPerl_Target
+    locked         = 1,   -- 0 = bars are shown and can be dragged
+    autoWidth      = 1,   -- take the width from the unit frame
+    width          = 200, -- fixed width if autoWidth is off
     height         = 9,
-    gap            = 2,   -- Abstand zwischen Haupt- und Schildhand
-    padding        = 2,   -- Abstand zum Unitframe
+    gap            = 2,   -- spacing between main hand and off hand
+    padding        = 2,   -- spacing to the unit frame
 
-    xperlTexture   = 1,   -- XPerls Balkentextur statt flacher Farbflaeche
-    background     = 1,   -- dunkler Untergrund hinter dem Balken
-    spark          = 0,   -- Laufmarke am Balkenende
+    xperlTexture   = 1,   -- XPerl's bar texture instead of a flat colour
+    background     = 1,   -- dark background behind the bar
+    spark          = 0,   -- spark at the end of the bar
 
-    showLabel      = 1,   -- Beschriftung links (Waffe + Geschwindigkeit)
-    showTimer      = 1,   -- Restzeit rechts
-    decimals       = 1,   -- Nachkommastellen der Restzeit
+    showLabel      = 1,   -- label on the left (weapon + speed)
+    showTimer      = 1,   -- time left on the right
+    decimals       = 1,   -- decimal places of the time left
     fontSize       = 9,
-    -- [patch] Schriftart der Balken; 1 = Prototype, 0 = Blizzard-Standard
+    -- [patch] bar font; 1 = Prototype, 0 = Blizzard default
     protoFont      = 0,
 
     colMH     = {0.10, 0.35, 1.00},
     colOH     = {0.00, 0.65, 0.95},
     colRanged = {0.20, 0.90, 0.30},
     colTarget = {0.90, 0.15, 0.15},
+
+    -- free positions, {x, y} of the TOPLEFT corner relative to the
+    -- BOTTOMLEFT of UIParent; nil = default spot near the screen centre
+    posPlayer = nil,
+    posTarget = nil,
 }
 
 --------------------------------------------------------------------- Config
@@ -68,7 +74,34 @@ function XPS:Colour(k)
     return c[1], c[2], c[3]
 end
 
---------------------------------------------------------------------- Aufbau
+local function Print(msg)
+    DEFAULT_CHAT_FRAME:AddMessage("|cFF40FF40X-Perl SwingTimer:|r " .. msg)
+end
+
+--------------------------------------------------------------------- Moving
+-- Dragging a docked box detaches it, so the new spot sticks.
+local function DragStart()
+    if XPS:Get("locked") == 1 then return end
+    this:StartMoving()
+    this.moving = true
+end
+
+local function DragStop()
+    if not this.moving then return end
+    this:StopMovingOrSizing()
+    this.moving = nil
+    -- the client would otherwise also store the frame in layout-cache.txt
+    -- and fight with our own anchoring on the next login
+    if this.SetUserPlaced then this:SetUserPlaced(false) end
+
+    if not XPerlSwingConfig then XPerlSwingConfig = {} end
+    XPerlSwingConfig[this.posKey]    = { this:GetLeft(), this:GetTop() }
+    XPerlSwingConfig[this.attachKey] = 0
+    XPS:ApplyLayout()
+    if XPerl_SwingTimer_RefreshOptions then XPerl_SwingTimer_RefreshOptions() end
+end
+
+--------------------------------------------------------------------- Building
 local function MakeBar(name, parent)
     local bar = CreateFrame("StatusBar", name, parent)
     bar:SetMinMaxValues(0, 1)
@@ -92,17 +125,29 @@ local function MakeBar(name, parent)
     return bar
 end
 
+local function MakeBox(name, posKey, attachKey)
+    local box = CreateFrame("Frame", name, UIParent)
+    box:SetMovable(true)
+    box:SetClampedToScreen(true)
+    box:RegisterForDrag("LeftButton")
+    box:SetScript("OnDragStart", DragStart)
+    box:SetScript("OnDragStop",  DragStop)
+    box:SetScript("OnHide",      DragStop)
+    box:SetBackdrop({ bgFile = TEX_FLAT })
+    box:SetBackdropColor(0.25, 1, 0.25, 0.25)
+    box.posKey, box.attachKey = posKey, attachKey
+    return box
+end
+
 function XPS:Build()
     if self.built then return end
 
-    self.playerBox = CreateFrame("Frame", "XPerlSwingPlayer", UIParent)
-    self.playerBox:SetMovable(true)
+    self.playerBox = MakeBox("XPerlSwingPlayer", "posPlayer", "attachPlayer")
     self.playerBox:SetWidth(200); self.playerBox:SetHeight(20)
     self.mh = MakeBar("XPerlSwingMH", self.playerBox)
     self.oh = MakeBar("XPerlSwingOH", self.playerBox)
 
-    self.targetBox = CreateFrame("Frame", "XPerlSwingTarget", UIParent)
-    self.targetBox:SetMovable(true)
+    self.targetBox = MakeBox("XPerlSwingTarget", "posTarget", "attachTarget")
     self.targetBox:SetWidth(200); self.targetBox:SetHeight(10)
     self.tb = MakeBar("XPerlSwingTB", self.targetBox)
 
@@ -116,7 +161,8 @@ function XPS:StyleBar(bar, w, r, g, b)
 
     bar:SetWidth(w); bar:SetHeight(h)
     bar:SetStatusBarTexture(self:Get("xperlTexture") == 1 and TEX_XPERL or TEX_FLAT)
-    bar:SetStatusBarColor(r, g, b)
+    -- keep the colour of a running bar (ranged shots use the main hand bar)
+    if bar.preview or not bar:IsShown() then bar:SetStatusBarColor(r, g, b) end
 
     if self:Get("background") == 1 then
         bar.bg:SetTexture(self:Get("xperlTexture") == 1 and TEX_XPERL or TEX_FLAT)
@@ -129,8 +175,8 @@ function XPS:StyleBar(bar, w, r, g, b)
     bar.spark:SetHeight(h * 2)
     if self:Get("spark") == 1 then bar.spark:Show() else bar.spark:Hide() end
 
-    -- [patch] MONOCHROME schaltet das Antialiasing ab; die duenne Prototype
-    -- wird dadurch scharf statt verwaschen.
+    -- [patch] MONOCHROME turns off anti-aliasing; this makes the thin
+    -- Prototype font sharp instead of blurry.
     local proto = (self:Get("protoFont") == 1)
     local fp = proto and "Interface\\AddOns\\ShaguPlates\\fonts\\Prototype.ttf"
                      or  "Fonts\\FRIZQT__.TTF"
@@ -144,53 +190,101 @@ function XPS:StyleBar(bar, w, r, g, b)
     if self:Get("showTimer") == 1 then bar.timer:Show() else bar.timer:Hide() end
 end
 
-local function AnchorWidth(host, fallbackWidth)
-    if host and host:IsShown() then
+-- Width of the unit frame, converted into the box's scale. The XPerl
+-- frames have their own scale setting, the boxes sit on UIParent.
+-- GetWidth() also works while the frame is hidden (no target yet).
+local function AnchorWidth(host, box, fallbackWidth)
+    if host then
         local w = host:GetWidth()
-        if w and w > 40 then return w end
+        if w and w > 40 then
+            return w * host:GetEffectiveScale() / box:GetEffectiveScale()
+        end
     end
     return fallbackWidth
+end
+
+-- Docked: below the unit frame. Free: saved spot, or a default near the
+-- screen centre so the box never ends up without an anchor.
+function XPS:PlaceBox(box, host, posKey, defaultY)
+    if box.moving then return end
+    box:ClearAllPoints()
+    if host then
+        box:SetPoint("TOP", host, "BOTTOM", 0, -self:Get("padding"))
+    else
+        local pos = self:Get(posKey)
+        if pos then
+            box:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", pos[1], pos[2])
+        else
+            box:SetPoint("CENTER", UIParent, "CENTER", 0, defaultY)
+        end
+    end
 end
 
 function XPS:ApplyLayout()
     if not self.built then return end
 
-    local h, gap, pad = self:Get("height"), self:Get("gap"), self:Get("padding")
+    local h, gap = self:Get("height"), self:Get("gap")
     local fixedW = self:Get("width")
+    local auto   = self:Get("autoWidth") == 1
 
-    -- Spielerleisten
+    -- player bars
     local host = (self:Get("attachPlayer") == 1) and (XPerl_Player or PlayerFrame) or nil
-    local w = (self:Get("autoWidth") == 1) and AnchorWidth(host, fixedW) or fixedW
+    local w = auto and AnchorWidth(host, self.playerBox, fixedW) or fixedW
 
     self.playerBox:SetWidth(w); self.playerBox:SetHeight(h * 2 + gap)
-    if host then
-        self.playerBox:ClearAllPoints()
-        self.playerBox:SetPoint("TOP", host, "BOTTOM", 0, -pad)
-    end
+    self:PlaceBox(self.playerBox, host, "posPlayer", -120)
     self:StyleBar(self.mh, w, self:Colour("colMH"))
     self:StyleBar(self.oh, w, self:Colour("colOH"))
     self.mh:ClearAllPoints(); self.mh:SetPoint("TOPLEFT", self.playerBox, "TOPLEFT", 0, 0)
     self.oh:ClearAllPoints(); self.oh:SetPoint("TOPLEFT", self.playerBox, "TOPLEFT", 0, -(h + gap))
 
-    -- Zielleiste
+    -- target bar
     local thost = (self:Get("attachTarget") == 1) and (XPerl_Target or TargetFrame) or nil
-    local tw = (self:Get("autoWidth") == 1) and AnchorWidth(thost, fixedW) or fixedW
+    local tw = auto and AnchorWidth(thost, self.targetBox, fixedW) or fixedW
     self.targetBox:SetWidth(tw); self.targetBox:SetHeight(h)
-    if thost then
-        self.targetBox:ClearAllPoints()
-        self.targetBox:SetPoint("TOP", thost, "BOTTOM", 0, -pad)
-    end
+    self:PlaceBox(self.targetBox, thost, "posTarget", -160)
     self:StyleBar(self.tb, tw, self:Colour("colTarget"))
     self.tb:ClearAllPoints(); self.tb:SetPoint("TOPLEFT", self.targetBox, "TOPLEFT", 0, 0)
+
+    self:UpdateLock()
 
     if self:Get("enabled") == 0 then
         self.mh:Hide(); self.oh:Hide(); self.tb:Hide()
     end
 end
 
---------------------------------------------------------------------- Ablauf
+-- Unlocked: boxes take the mouse, get a green backdrop and show
+-- placeholder bars, so even empty bars can be grabbed and placed.
+function XPS:UpdateLock()
+    local unlocked = self:Get("locked") == 0
+    local boxes = { self.playerBox, self.targetBox }
+    for i = 1, 2 do
+        local box = boxes[i]
+        box:EnableMouse(unlocked)
+        if unlocked then box:SetBackdropColor(0.25, 1, 0.25, 0.25)
+        else             box:SetBackdropColor(0, 0, 0, 0) end
+    end
+
+    local bars = { self.mh, self.oh, self.tb }
+    local text = { "Main hand (drag to move)", "Off hand", "Target (drag to move)" }
+    for i = 1, 3 do
+        local bar = bars[i]
+        if unlocked then
+            bar.preview = true
+            bar.endTime = nil
+            bar:SetMinMaxValues(0, 1); bar:SetValue(0.6)
+            bar.label:SetText(text[i]); bar.timer:SetText("")
+            bar:Show()
+        elseif bar.preview then
+            bar.preview = nil
+            bar:Hide()
+        end
+    end
+end
+
+--------------------------------------------------------------------- Running
 function XPS:Start(bar, duration, label, r, g, b)
-    if self:Get("enabled") == 0 then return end
+    if self:Get("enabled") == 0 or bar.preview then return end
     if self:Get("combatOnly") == 1 and not UnitAffectingCombat("player") then return end
     if not duration or duration <= 0 then return end
 
@@ -204,6 +298,7 @@ function XPS:Start(bar, duration, label, r, g, b)
 end
 
 function XPS:OnUpdate(bar)
+    if bar.preview then return end
     local now = GetTime()
     if not bar.endTime or now >= bar.endTime then
         bar:Hide()
@@ -225,9 +320,9 @@ function XPS:OnUpdate(bar)
     end
 end
 
---------------------------------------------------------------------- Erkennung
--- Beidhand-Heuristik: Vanilla sagt nicht, welche Hand getroffen hat.
--- Wir vergleichen, welche der beiden Waffen zeitlich "faellig" war.
+--------------------------------------------------------------------- Detection
+-- Dual wield heuristic: vanilla does not tell which hand hit.
+-- We compare which of the two weapons was "due" in time.
 local lastMH, lastOH, streakMH, streakOH = 0, 0, 0, 0
 
 function XPS:MeleeSwing()
@@ -242,21 +337,21 @@ function XPS:MeleeSwing()
             if lastOH == 0 then lastOH = now end
             lastMH, streakMH, streakOH = now, streakMH + 1, 0
             if self:Get("showMainhand") == 1 then
-                self:Start(self.mh, sMH, format("Haupthand [%.2fs]", sMH), self:Colour("colMH"))
+                self:Start(self.mh, sMH, format("Main hand [%.2fs]", sMH), self:Colour("colMH"))
             end
         else
             lastOH, streakOH, streakMH = now, streakOH + 1, 0
-            self:Start(self.oh, sOH, format("Schildhand [%.2fs]", sOH), self:Colour("colOH"))
+            self:Start(self.oh, sOH, format("Off hand [%.2fs]", sOH), self:Colour("colOH"))
         end
     else
         lastMH = now
         if self:Get("showMainhand") == 1 then
-            self:Start(self.mh, sMH, format("Haupthand [%.2fs]", sMH), self:Colour("colMH"))
+            self:Start(self.mh, sMH, format("Main hand [%.2fs]", sMH), self:Colour("colMH"))
         end
     end
 end
 
--- Faehigkeiten, die den laufenden Nahkampfschwung verbrauchen
+-- Abilities that consume the current melee swing
 local onNextSwing = {
     ["Heroic Strike"] = 1, ["Cleave"] = 1, ["Maul"] = 1,
     ["Raptor Strike"] = 1, ["Slam"] = 1,
@@ -270,31 +365,45 @@ function XPS:RangedSwing(spell)
 end
 
 local rangedCast = {
-    ["Shoot"] = "Zauberstab", ["Shoot Bow"] = "Bogen", ["Shoot Gun"] = "Schusswaffe",
-    ["Shoot Crossbow"] = "Armbrust", ["Throw"] = "Wurf", ["Auto Shot"] = "Autoschuss",
+    ["Shoot"] = "Wand", ["Shoot Bow"] = "Bow", ["Shoot Gun"] = "Gun",
+    ["Shoot Crossbow"] = "Crossbow", ["Throw"] = "Thrown", ["Auto Shot"] = "Auto Shot",
 }
 
-function XPS:ParseSelf(msg)
-    local _, _, spell = string.find(msg, "Your (.+) hits")
-    if not spell then _, _, spell = string.find(msg, "Your (.+) crits") end
-    if not spell then _, _, spell = string.find(msg, "Your (.+) misses") end
-    if not spell then _, _, spell = string.find(msg, "Your (.+) is") end
+-- "Your X hits/crits ...", "Your X missed ...", "Your X was dodged/blocked
+-- ...", "Your X is parried ...", "Your X failed. ..."
+local selfSpellPatterns = {
+    "^Your (.-) hits ", "^Your (.-) crits ", "^Your (.-) misse",
+    "^Your (.-) was ", "^Your (.-) is ", "^Your (.-) failed",
+}
+
+-- isSpell: message comes from CHAT_MSG_SPELL_SELF_DAMAGE, where only
+-- known abilities count - anything else there is not a white swing.
+function XPS:ParseSelf(msg, isSpell)
+    if not msg then return end
+    -- falling, drowning, lava etc. also land in the SELF_HITS channel
+    if string.find(msg, "lose %d+ health") then return end
+
+    local spell
+    for i = 1, table.getn(selfSpellPatterns) do
+        local _, _, s = string.find(msg, selfSpellPatterns[i])
+        if s then spell = s; break end
+    end
 
     if not spell then
-        self:MeleeSwing()                       -- normaler Autoangriff
+        if not isSpell then self:MeleeSwing() end   -- normal auto attack
     elseif onNextSwing[spell] then
-        self:MeleeSwing()                       -- verbraucht den Schwung
+        self:MeleeSwing()                           -- consumes the swing
     elseif spell == "Auto Shot" then
-        self:RangedSwing("Autoschuss")
+        self:RangedSwing("Auto Shot")
     end
 end
 
 function XPS:ParseEnemy(msg)
-    if not UnitExists("target") then return end
-    local _, _, who = string.find(msg, "(.+) hits you")
-    if not who then _, _, who = string.find(msg, "(.+) crits you") end
-    if not who then _, _, who = string.find(msg, "(.+) misses you") end
-    if not who then _, _, who = string.find(msg, "(.+) attacks%. You ") end
+    if not msg or not UnitExists("target") then return end
+    local _, _, who = string.find(msg, "^(.-) hits you")
+    if not who then _, _, who = string.find(msg, "^(.-) crits you") end
+    if not who then _, _, who = string.find(msg, "^(.-) misses you") end
+    if not who then _, _, who = string.find(msg, "^(.-) attacks%. You ") end
     if not who or who ~= UnitName("target") then return end
 
     local speed = UnitAttackSpeed("target")
@@ -302,9 +411,13 @@ function XPS:ParseEnemy(msg)
     self:Start(self.tb, speed, format("%s [%.2fs]", who, speed), self:Colour("colTarget"))
 end
 
+local function HideIfRunning(bar)
+    if not bar.preview then bar.endTime = nil; bar:Hide() end
+end
+
 function XPS:Reset()
     lastMH, lastOH, streakMH, streakOH = 0, 0, 0, 0
-    if self.built then self.mh:Hide(); self.oh:Hide(); self.tb:Hide() end
+    if self.built then HideIfRunning(self.mh); HideIfRunning(self.oh); HideIfRunning(self.tb) end
 end
 
 --------------------------------------------------------------------- Events
@@ -325,10 +438,12 @@ ev:RegisterEvent("UNIT_SPELLCAST_SENT")
 ev:SetScript("OnEvent", function()
     if event == "VARIABLES_LOADED" then
         if not XPerlSwingConfig then XPerlSwingConfig = {} end
+        -- never start a session with movable bars in the way
+        XPerlSwingConfig.locked = nil
         XPS:Build()
         XPS:ApplyLayout()
 
-        -- AttackBar ist jetzt ueberfluessig; falls noch installiert, still legen
+        -- AttackBar is redundant now; if still installed, silence it
         if Abar_Frame then
             Abar_Frame:Hide(); Abar_Frame:SetScript("OnShow", function() this:Hide() end)
             if Abar_Mhr then Abar_Mhr:Hide() end
@@ -347,13 +462,16 @@ ev:SetScript("OnEvent", function()
         XPS:Reset()
 
     elseif event == "PLAYER_TARGET_CHANGED" then
-        if XPS.built then XPS.tb:Hide() end
+        if XPS.built then
+            HideIfRunning(XPS.tb)
+            XPS:ApplyLayout()   -- target frame may have changed its width
+        end
 
     elseif event == "CHAT_MSG_COMBAT_SELF_HITS" or event == "CHAT_MSG_COMBAT_SELF_MISSES" then
         XPS:ParseSelf(arg1)
 
     elseif event == "CHAT_MSG_SPELL_SELF_DAMAGE" then
-        XPS:ParseSelf(arg1)
+        XPS:ParseSelf(arg1, true)
 
     elseif event == "CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS"
         or event == "CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES" then
@@ -373,6 +491,33 @@ ev:SetScript("OnEvent", function()
     end
 end)
 
+--------------------------------------------------------------------- Slash
+function XPS:SetLocked(locked)
+    self:Set("locked", locked and 1 or 0)
+    if XPerl_SwingTimer_RefreshOptions then XPerl_SwingTimer_RefreshOptions() end
+end
+
 SLASH_XPERLSWING1 = "/xps"
 SLASH_XPERLSWING2 = "/xperlswing"
-SlashCmdList["XPERLSWING"] = function() XPerl_SwingTimer_ToggleOptions() end
+SlashCmdList["XPERLSWING"] = function(msg)
+    msg = string.lower(msg or "")
+    if msg == "unlock" or msg == "move" then
+        XPS:SetLocked(false)
+        Print("bars unlocked - drag them with the left mouse button. Dragging detaches them from the unit frame. |cFFFFFF00/xps lock|r when done.")
+    elseif msg == "lock" then
+        XPS:SetLocked(true)
+        Print("bars locked.")
+    elseif msg == "reset" then
+        if XPerlSwingConfig then
+            XPerlSwingConfig.posPlayer, XPerlSwingConfig.posTarget = nil, nil
+            XPerlSwingConfig.attachPlayer, XPerlSwingConfig.attachTarget = nil, nil
+        end
+        XPS:ApplyLayout()
+        if XPerl_SwingTimer_RefreshOptions then XPerl_SwingTimer_RefreshOptions() end
+        Print("bars docked to the X-Perl frames again.")
+    elseif msg == "help" or msg == "?" then
+        Print("|cFFFFFF00/xps|r options, |cFFFFFF00/xps unlock|r / |cFFFFFF00lock|r move bars, |cFFFFFF00/xps reset|r dock bars again.")
+    else
+        XPerl_SwingTimer_ToggleOptions()
+    end
+end

@@ -2,5 +2,15 @@
 
 Versions follow `MAJOR.MINOR.PATCH`. Each release is a git tag `v<version>`; older versions can be downloaded from the tag page on GitHub.
 
+## 1.1.0 – 2026-10-04
+- Bars can be moved: `/xps unlock` / `/xps lock` or the new "Lock bars" option. Dragging a docked bar detaches it; the position is saved. `/xps reset` docks them again.
+- Fixed: turning off docking left the bar stuck to the unit frame, and after a reload it had no anchor at all and was invisible.
+- Fixed: bar width ignored the X-Perl frame scale, and the target bar fell back to the fixed width when there was no target at login.
+- Fixed: falling, drowning and lava damage started a fake melee swing.
+- Fixed: unknown messages in the spell damage channel started a fake melee swing; "missed" and "was dodged/blocked" abilities (e.g. Heroic Strike) were not recognised.
+- Fixed: changing the target recoloured a running ranged bar.
+- Opening the options no longer writes every slider value into the saved variables.
+- All texts and comments are in English now.
+
 ## 1.0.0 – 2026-10-03
 - First tagged release (state of the OctoWoW install).

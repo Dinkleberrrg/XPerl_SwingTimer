@@ -1,14 +1,15 @@
 --=====================================================================
--- Optionsfenster im XPerl-Stil.
+-- Options window in XPerl style.
 --
--- XPerl_Options ist eine 563 KB grosse, fest verdrahtete XML ohne
--- Registrierungs-API - fremde Module koennen sich dort nicht eintragen.
--- Deshalb ein eigenes Panel im gleichen Look, plus ein Knopf, der in
--- XPerls Optionsfenster eingehaengt wird, sobald das nachgeladen wird.
+-- XPerl_Options is a 563 KB hard-wired XML without a registration API -
+-- other modules cannot add themselves there. So this is a separate panel
+-- with the same look, plus a button that is hooked into XPerl's options
+-- window as soon as that one is loaded on demand.
 --=====================================================================
 
 local XPS = XPerl_SwingTimer
 local panel
+local refreshing   -- true while the panel is filled from the config
 
 local function Check(parent, key, label, tip, x, y)
     local name = "XPerlSwingOpt_" .. key
@@ -18,7 +19,11 @@ local function Check(parent, key, label, tip, x, y)
     getglobal(name .. "Text"):SetText(label)
     c.tooltipText = tip
     c:SetScript("OnClick", function()
-        XPS:Set(key, this:GetChecked() and 1 or 0)
+        if this.key == "locked" then
+            XPS:SetLocked(this:GetChecked() and true or false)
+        else
+            XPS:Set(this.key, this:GetChecked() and 1 or 0)
+        end
     end)
     c:SetScript("OnEnter", function()
         if this.tooltipText then
@@ -44,7 +49,7 @@ local function Slider(parent, key, label, lo, hi, step, x, y)
         local v = this:GetValue()
         if step >= 1 then v = floor(v + 0.5) else v = floor(v * 100 + 0.5) / 100 end
         getglobal(this:GetName() .. "Text"):SetText(this.labelText .. ": " .. v)
-        XPS:Set(this.key, v)
+        if not refreshing and this.key then XPS:Set(this.key, v) end
     end)
     s.key = key
     return s
@@ -116,53 +121,54 @@ local function BuildPanel()
 
     local L, R = 24, 240
 
-    -- Feste Y-Werte statt Rechnerei: linke und rechte Spalte ueberschneiden
-    -- sich sonst schnell, wenn man spaeter eine Zeile einfuegt.
-    Header(panel, "Leisten", L, -50)
-    widgets.enabled       = Check(panel, "enabled",      "Modul aktiv",              "Schaltet alle Leisten ab, ohne das Addon zu entfernen.", L, -72)
-    widgets.showMainhand  = Check(panel, "showMainhand", "Haupthand",                nil, L, -94)
-    widgets.showOffhand   = Check(panel, "showOffhand",  "Schildhand",               "Nur beim Beidhandkampf sichtbar.", L, -116)
-    widgets.showRanged    = Check(panel, "showRanged",   "Fernkampf / Wurf",         "Bogen, Schusswaffe, Armbrust, Wurfwaffe, Zauberstab.", L, -138)
-    widgets.showTargetMob = Check(panel, "showTargetMob","Ziel: Kreaturen",          "Swing-Timer des anvisierten Gegners.", L, -160)
-    widgets.showTargetPvP = Check(panel, "showTargetPvP","Ziel: feindl. Spieler",    nil, L, -182)
-    widgets.combatOnly    = Check(panel, "combatOnly",   "Nur im Kampf",             "Blendet die Leisten ausserhalb des Kampfes aus.", L, -204)
+    -- Fixed Y values instead of arithmetic: otherwise the left and right
+    -- columns quickly overlap when a row is added later.
+    Header(panel, "Bars", L, -50)
+    widgets.enabled       = Check(panel, "enabled",      "Module enabled",           "Turns off all bars without removing the add-on.", L, -72)
+    widgets.showMainhand  = Check(panel, "showMainhand", "Main hand",                nil, L, -94)
+    widgets.showOffhand   = Check(panel, "showOffhand",  "Off hand",                 "Only visible when dual wielding.", L, -116)
+    widgets.showRanged    = Check(panel, "showRanged",   "Ranged / thrown",          "Bow, gun, crossbow, thrown weapon, wand.", L, -138)
+    widgets.showTargetMob = Check(panel, "showTargetMob","Target: creatures",        "Swing timer of the targeted enemy.", L, -160)
+    widgets.showTargetPvP = Check(panel, "showTargetPvP","Target: enemy players",    nil, L, -182)
+    widgets.combatOnly    = Check(panel, "combatOnly",   "Only in combat",           "Hides the bars outside of combat.", L, -204)
 
-    Header(panel, "Verankerung", L, -236)
-    widgets.attachPlayer  = Check(panel, "attachPlayer", "An XPerl-Playerframe",     "Aus = frei platzierbar.", L, -258)
-    widgets.attachTarget  = Check(panel, "attachTarget", "An XPerl-Targetframe",     nil, L, -280)
-    widgets.autoWidth     = Check(panel, "autoWidth",    "Breite vom Frame",         "Uebernimmt die Breite des Unitframes. Aus = fester Wert rechts.", L, -302)
+    Header(panel, "Anchoring", L, -236)
+    widgets.attachPlayer  = Check(panel, "attachPlayer", "Dock to X-Perl player",    "Off = free placement (unlock the bars to move them).", L, -258)
+    widgets.attachTarget  = Check(panel, "attachTarget", "Dock to X-Perl target",    "Off = free placement (unlock the bars to move them).", L, -280)
+    widgets.autoWidth     = Check(panel, "autoWidth",    "Width from frame",         "Takes the width of the unit frame. Off = fixed value on the right.", L, -302)
+    widgets.locked        = Check(panel, "locked",       "Lock bars",                "Off = bars are shown and can be dragged with the left mouse button. Dragging a docked bar detaches it. /xps unlock, /xps lock, /xps reset", L, -324)
 
-    Header(panel, "Farben", L, -334)
-    widgets.colMH     = Swatch(panel, "colMH",     "Haupthand",  L,     -358)
-    widgets.colOH     = Swatch(panel, "colOH",     "Schildhand", L+110, -358)
-    widgets.colRanged = Swatch(panel, "colRanged", "Fernkampf",  L,     -382)
-    widgets.colTarget = Swatch(panel, "colTarget", "Ziel",       L+110, -382)
+    Header(panel, "Colours", L, -356)
+    widgets.colMH     = Swatch(panel, "colMH",     "Main hand", L,     -380)
+    widgets.colOH     = Swatch(panel, "colOH",     "Off hand",  L+110, -380)
+    widgets.colRanged = Swatch(panel, "colRanged", "Ranged",    L,     -404)
+    widgets.colTarget = Swatch(panel, "colTarget", "Target",    L+110, -404)
 
-    Header(panel, "Darstellung", R, -50)
-    widgets.xperlTexture  = Check(panel, "xperlTexture", "XPerl-Balkentextur",       "Aus = flache Farbflaeche.", R, -72)
-    widgets.background    = Check(panel, "background",   "Dunkler Untergrund",       nil, R, -94)
-    widgets.spark         = Check(panel, "spark",        "Laufmarke",                nil, R, -116)
-    widgets.showLabel     = Check(panel, "showLabel",    "Beschriftung links",       "Waffe und Geschwindigkeit.", R, -138)
-    widgets.showTimer     = Check(panel, "showTimer",    "Restzeit rechts",          nil, R, -160)
-    widgets.protoFont     = Check(panel, "protoFont",    "Prototype-Schrift",        "Aus = Blizzard-Standardschrift.", R, -182)
+    Header(panel, "Appearance", R, -50)
+    widgets.xperlTexture  = Check(panel, "xperlTexture", "X-Perl bar texture",       "Off = flat colour.", R, -72)
+    widgets.background    = Check(panel, "background",   "Dark background",          nil, R, -94)
+    widgets.spark         = Check(panel, "spark",        "Spark",                    nil, R, -116)
+    widgets.showLabel     = Check(panel, "showLabel",    "Label on the left",        "Weapon and speed.", R, -138)
+    widgets.showTimer     = Check(panel, "showTimer",    "Time left on the right",   nil, R, -160)
+    widgets.protoFont     = Check(panel, "protoFont",    "Prototype font",           "Off = Blizzard default font.", R, -182)
 
-    widgets.height    = Slider(panel, "height",    "Hoehe",            4,   24, 1, R, -222)
-    widgets.width     = Slider(panel, "width",     "Feste Breite",     80, 400, 5, R, -260)
-    widgets.gap       = Slider(panel, "gap",       "Balkenabstand",    0,   12, 1, R, -298)
-    widgets.padding   = Slider(panel, "padding",   "Abstand zum Frame",-10, 30, 1, R, -336)
-    widgets.fontSize  = Slider(panel, "fontSize",  "Schriftgroesse",   6,   18, 1, R, -374)
-    widgets.decimals  = Slider(panel, "decimals",  "Nachkommastellen", 0,    2, 1, R, -412)
+    widgets.height    = Slider(panel, "height",    "Height",            4,   24, 1, R, -222)
+    widgets.width     = Slider(panel, "width",     "Fixed width",       80, 400, 5, R, -260)
+    widgets.gap       = Slider(panel, "gap",       "Bar spacing",       0,   12, 1, R, -298)
+    widgets.padding   = Slider(panel, "padding",   "Distance to frame",-10, 30, 1, R, -336)
+    widgets.fontSize  = Slider(panel, "fontSize",  "Font size",         6,   18, 1, R, -374)
+    widgets.decimals  = Slider(panel, "decimals",  "Decimal places",    0,    2, 1, R, -412)
 
     local close = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     close:SetWidth(100); close:SetHeight(22)
     close:SetPoint("BOTTOM", panel, "BOTTOM", 60, 18)
-    close:SetText("Schliessen")
+    close:SetText("Close")
     close:SetScript("OnClick", function() panel:Hide() end)
 
     local reset = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     reset:SetWidth(100); reset:SetHeight(22)
     reset:SetPoint("BOTTOM", panel, "BOTTOM", -60, 18)
-    reset:SetText("Standard")
+    reset:SetText("Defaults")
     reset:SetScript("OnClick", function()
         XPerlSwingConfig = {}
         XPS:ApplyLayout()
@@ -174,6 +180,7 @@ end
 
 function XPerl_SwingTimer_RefreshOptions()
     if not panel then return end
+    refreshing = true
     for key, w in pairs(widgets) do
         local v = XPS:Get(key)
         if type(v) == "table" then
@@ -185,6 +192,7 @@ function XPerl_SwingTimer_RefreshOptions()
             w:SetChecked(v == 1)
         end
     end
+    refreshing = nil
 end
 
 function XPerl_SwingTimer_ToggleOptions()
@@ -197,7 +205,7 @@ function XPerl_SwingTimer_ToggleOptions()
     end
 end
 
--- Knopf in XPerls Optionsfenster einhaengen, sobald es nachgeladen ist
+-- Hook a button into XPerl's options window as soon as it is loaded
 local hook = CreateFrame("Frame")
 hook:RegisterEvent("ADDON_LOADED")
 hook:SetScript("OnEvent", function()
