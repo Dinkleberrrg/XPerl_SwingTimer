@@ -101,7 +101,7 @@ local function BuildPanel()
     if panel then return panel end
 
     panel = CreateFrame("Frame", "XPerlSwingOptions", UIParent)
-    panel:SetWidth(470); panel:SetHeight(500)
+    panel:SetWidth(470); panel:SetHeight(530)
     panel:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     panel:SetBackdrop({
         bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -160,6 +160,26 @@ local function BuildPanel()
     widgets.fontSize  = Slider(panel, "fontSize",  "Font size",         6,   18, 1, R, -374)
     widgets.decimals  = Slider(panel, "decimals",  "Decimal places",    0,    2, 1, R, -412)
 
+    -- show / move the bars and preview the settings without a fight
+    local unlock = CreateFrame("Button", "XPerlSwingOpt_Unlock", panel, "UIPanelButtonTemplate")
+    unlock:SetWidth(100); unlock:SetHeight(22)
+    unlock:SetPoint("BOTTOM", panel, "BOTTOM", -60, 46)
+    unlock:SetScript("OnClick", function()
+        XPS:SetLocked(XPS:Get("locked") == 0)
+    end)
+    panel.unlock = unlock
+
+    local demo = CreateFrame("Button", "XPerlSwingOpt_Demo", panel, "UIPanelButtonTemplate")
+    demo:SetWidth(100); demo:SetHeight(22)
+    demo:SetPoint("BOTTOM", panel, "BOTTOM", 60, 46)
+    demo:SetScript("OnClick", function()
+        if XPS.demo then XPS:StopDemo() else XPS:StartDemo() end
+    end)
+    panel.demo = demo
+
+    -- closing the options ends the demo
+    panel:SetScript("OnHide", function() XPS:StopDemo() end)
+
     local close = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     close:SetWidth(100); close:SetHeight(22)
     close:SetPoint("BOTTOM", panel, "BOTTOM", 60, 18)
@@ -194,6 +214,8 @@ function XPerl_SwingTimer_RefreshOptions()
         end
     end
     refreshing = nil
+    panel.unlock:SetText(XPS:Get("locked") == 1 and "Unlock bars" or "Lock bars")
+    panel.demo:SetText(XPS.demo and "Stop demo" or "Demo")
 end
 
 function XPerl_SwingTimer_ToggleOptions()

@@ -2,6 +2,10 @@
 
 Versions follow `MAJOR.MINOR.PATCH`. Each release is a git tag `v<version>`; older versions can be downloaded from the tag page on GitHub.
 
+## 1.4.0 – 2026-10-04
+- Options: new buttons "Unlock bars" / "Lock bars" (shows the bars so they can be dragged) and "Demo".
+- Demo (also `/xps demo`): runs swings on all bars for 12 seconds with the current settings and your real weapon speeds, so changes to colours, size, font, spark etc. can be seen live. Afterwards (or when the options are closed) everything goes back to normal.
+
 ## 1.3.0 – 2026-10-04
 - Optional SuperWoW support (option "Use SuperWoW", on by default): every real swing is reported per hand, so main hand and off hand are exact instead of guessed, Heroic Strike & co. and ranged shots come from the actual cast, and the target bar also runs when the target swings at someone else.
 - Without SuperWoW, or with the option off, the combat log detection works as before.

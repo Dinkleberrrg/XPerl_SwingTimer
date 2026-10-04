@@ -335,6 +335,7 @@ function XPS:ApplyLayout()
     self.tb:ClearAllPoints(); self.tb:SetPoint("TOPLEFT", self.targetBox, "TOPLEFT", 0, 0)
 
     self:UpdateLock()
+    if self.demo then self:DemoSync() end
 
     if self:Get("enabled") == 0 then
         self.mh:Hide(); self.oh:Hide(); self.tb:Hide()
@@ -353,6 +354,7 @@ function XPS:UpdateLock()
         else             box:SetBackdropColor(0, 0, 0, 0) end
     end
 
+    if self.demo then return end   -- the demo owns the bars while it runs
     local bars = { self.mh, self.oh, self.tb }
     local text = { "Main hand (drag to move)", "Off hand", "Target (drag to move)" }
     for i = 1, 3 do
@@ -372,10 +374,13 @@ end
 
 --------------------------------------------------------------------- Running
 function XPS:Start(bar, duration, label, r, g, b)
-    if self:Get("enabled") == 0 or bar.preview then return end
+    if self:Get("enabled") == 0 or bar.preview or self.demo then return end
     if self:Get("combatOnly") == 1 and not UnitAffectingCombat("player") then return end
     if not duration or duration <= 0 then return end
+    self:Run(bar, duration, label, r, g, b)
+end
 
+function XPS:Run(bar, duration, label, r, g, b)
     bar.startTime = GetTime()
     bar.endTime   = GetTime() + duration
     bar:SetMinMaxValues(bar.startTime, bar.endTime)
@@ -389,8 +394,12 @@ function XPS:OnUpdate(bar)
     if bar.preview then return end
     local now = GetTime()
     if not bar.endTime or now >= bar.endTime then
-        bar:Hide()
-        return
+        if self.demo and bar.demo then
+            self:DemoSwing(bar)          -- next demo swing right away
+        else
+            bar:Hide()
+            return
+        end
     end
     bar:SetValue(now)
 
@@ -406,6 +415,75 @@ function XPS:OnUpdate(bar)
         bar.spark:ClearAllPoints()
         bar.spark:SetPoint("CENTER", bar, "LEFT", pct * bar:GetWidth(), 0)
     end
+end
+
+--------------------------------------------------------------------- Demo
+-- Runs fake swings on all bars with the current settings (real weapon
+-- speeds where possible), then puts everything back as it was.
+local DEMO_TIME = 12
+
+local demoTimer = CreateFrame("Frame")
+demoTimer:Hide()
+demoTimer:SetScript("OnUpdate", function()
+    if not XPS.demo or GetTime() >= XPS.demo then XPS:StopDemo() end
+end)
+
+function XPS:DemoSwing(bar)
+    local sMH, sOH = UnitAttackSpeed("player")
+    sMH = sMH or 2.6
+    if bar == self.mh then
+        self:Run(bar, sMH, format("Main hand [%.2fs]", sMH), self:Colour("colMH"))
+    elseif bar == self.oh then
+        sOH = sOH or 1.8
+        self:Run(bar, sOH, format("Off hand [%.2fs]", sOH), self:Colour("colOH"))
+    else
+        self:Run(bar, 2.0, "Target [2.00s]", self:Colour("colTarget"))
+    end
+end
+
+-- start or hide each demo bar according to the current settings
+function XPS:DemoSync()
+    local on = self:Get("enabled") == 1
+    local want = {
+        [self.mh] = on and self:Get("showMainhand") == 1,
+        [self.oh] = on and self:Get("showOffhand") == 1,
+        [self.tb] = on and (self:Get("showTargetMob") == 1 or self:Get("showTargetPvP") == 1),
+    }
+    for bar, show in pairs(want) do
+        bar.preview = nil
+        if show then
+            bar.demo = true
+            if not bar:IsShown() or not bar.endTime then self:DemoSwing(bar) end
+        else
+            bar.demo = nil
+            bar.endTime = nil
+            bar:Hide()
+        end
+    end
+end
+
+function XPS:StartDemo()
+    if not self.built then return end
+    self.demo = GetTime() + DEMO_TIME
+    self.mh:Hide(); self.oh:Hide(); self.tb:Hide()
+    self.mh.endTime, self.oh.endTime, self.tb.endTime = nil, nil, nil
+    self:DemoSync()
+    demoTimer:Show()
+    if XPerl_SwingTimer_RefreshOptions then XPerl_SwingTimer_RefreshOptions() end
+end
+
+function XPS:StopDemo()
+    if not self.demo then return end
+    self.demo = nil
+    demoTimer:Hide()
+    local bars = { self.mh, self.oh, self.tb }
+    for i = 1, 3 do
+        bars[i].demo = nil
+        bars[i].endTime = nil
+        bars[i]:Hide()
+    end
+    self:ApplyLayout()   -- back to normal (or the unlocked placeholders)
+    if XPerl_SwingTimer_RefreshOptions then XPerl_SwingTimer_RefreshOptions() end
 end
 
 --------------------------------------------------------------------- Detection
@@ -500,7 +578,7 @@ function XPS:ParseEnemy(msg)
 end
 
 local function HideIfRunning(bar)
-    if not bar.preview then bar.endTime = nil; bar:Hide() end
+    if not bar.preview and not bar.demo then bar.endTime = nil; bar:Hide() end
 end
 
 function XPS:Reset()
@@ -660,8 +738,10 @@ SlashCmdList["XPERLSWING"] = function(msg)
         XPS:ApplyLayout()
         if XPerl_SwingTimer_RefreshOptions then XPerl_SwingTimer_RefreshOptions() end
         Print("bars docked to the X-Perl frames again.")
+    elseif msg == "demo" then
+        if XPS.demo then XPS:StopDemo() else XPS:StartDemo() end
     elseif msg == "help" or msg == "?" then
-        Print("|cFFFFFF00/xps|r options, |cFFFFFF00/xps unlock|r / |cFFFFFF00lock|r move bars, |cFFFFFF00/xps reset|r dock bars again.")
+        Print("|cFFFFFF00/xps|r options, |cFFFFFF00/xps unlock|r / |cFFFFFF00lock|r move bars, |cFFFFFF00/xps demo|r preview, |cFFFFFF00/xps reset|r dock bars again.")
     else
         XPerl_SwingTimer_ToggleOptions()
     end
