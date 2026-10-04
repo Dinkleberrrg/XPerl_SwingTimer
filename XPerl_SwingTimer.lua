@@ -203,13 +203,71 @@ local function AnchorWidth(host, box, fallbackWidth)
     return fallbackWidth
 end
 
+--------------------------------------------------------------------- Docking
+-- XPerl draws a lot outside its 220x60 main frame: the stats frame grows
+-- with XP bar, druid mana bar or energy ticker, the creature type hangs
+-- below the portrait, combo points and buffs can sit below as well.
+-- Docked bars therefore go below the lowest visible of these parts.
+-- [n] = scan the frame and its children, "kids" = children only (the
+-- buff frame is a fixed 50 px box even when empty).
+local dockParts = {
+    XPerl_Player = {
+        "XPerl_Player_NameFrame", "XPerl_Player_PortraitFrame",
+        "XPerl_Player_Class", { "XPerl_Player_StatsFrame" },
+    },
+    XPerl_Target = {
+        "XPerl_Target_NameFrame", "XPerl_Target_PortraitFrame",
+        "XPerl_Target_LevelFrame", "XPerl_Target_CPFrame",
+        "XPerl_Target_CreatureType", "XPerl_Target_TypeFramePlayer",
+        "XPerl_Target_BossFrame", { "XPerl_Target_StatsFrame" },
+        { "XPerl_Target_BuffFrame", "kids" }, { "ComboFrame" },
+    },
+}
+
+-- lowest visible bottom edge in screen pixels (nil if nothing visible)
+local function Lowest(f, lowest, kidsOnly)
+    if not f or not f:IsVisible() then return lowest end
+    if not kidsOnly then
+        local b = f:GetBottom()
+        if b then
+            b = b * f:GetEffectiveScale()
+            if not lowest or b < lowest then lowest = b end
+        end
+    end
+    if kidsOnly ~= nil then
+        local kids = { f:GetChildren() }
+        for i = 1, table.getn(kids) do lowest = Lowest(kids[i], lowest, false) end
+    end
+    return lowest
+end
+
+-- extra Y offset (box units) from the host's bottom edge to the lowest part
+local function DockOffset(host, box)
+    local parts = dockParts[host:GetName() or ""]
+    local hb = host:GetBottom()
+    if not parts or not hb then return 0 end
+    local lowest
+    for i = 1, table.getn(parts) do
+        local e = parts[i]
+        if type(e) == "table" then
+            lowest = Lowest(getglobal(e[1]), lowest, e[2] == "kids")
+        else
+            lowest = Lowest(getglobal(e), lowest)
+        end
+    end
+    if not lowest then return 0 end
+    return (lowest - hb * host:GetEffectiveScale()) / box:GetEffectiveScale()
+end
+
 -- Docked: below the unit frame. Free: saved spot, or a default near the
 -- screen centre so the box never ends up without an anchor.
 function XPS:PlaceBox(box, host, posKey, defaultY)
     if box.moving then return end
+    box.host = host
+    box.dockY = nil
     box:ClearAllPoints()
     if host then
-        box:SetPoint("TOP", host, "BOTTOM", 0, -self:Get("padding"))
+        self:Dock(box)
     else
         local pos = self:Get(posKey)
         if pos then
@@ -219,6 +277,31 @@ function XPS:PlaceBox(box, host, posKey, defaultY)
         end
     end
 end
+
+-- (re)anchor a docked box; only touches the anchor when the offset changed
+function XPS:Dock(box)
+    local host = box.host
+    if not host or box.moving then return end
+    local y = floor(DockOffset(host, box) + 0.5) - self:Get("padding")
+    if box.dockY == y then return end
+    box.dockY = y
+    box:ClearAllPoints()
+    box:SetPoint("TOP", host, "BOTTOM", 0, y)
+end
+
+-- XPerl changes its layout without events we could listen to (bars
+-- appearing, shapeshifts, buff rows), so docked boxes check a few
+-- times per second whether they need to move.
+local dockWatch = CreateFrame("Frame")
+dockWatch.elapsed = 0
+dockWatch:SetScript("OnUpdate", function()
+    this.elapsed = this.elapsed + arg1
+    if this.elapsed < 0.2 then return end
+    this.elapsed = 0
+    if not XPS.built then return end
+    XPS:Dock(XPS.playerBox)
+    XPS:Dock(XPS.targetBox)
+end)
 
 function XPS:ApplyLayout()
     if not self.built then return end

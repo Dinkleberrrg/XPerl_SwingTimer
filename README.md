@@ -5,7 +5,7 @@ Standalone add-on module for X-Perl UnitFrames (WoW 1.12): swing timers for main
 ## Features
 - Bars for main hand, off hand (dual wield) and ranged/thrown/wand
 - Target swing timer, switchable separately for creatures and enemy players
-- Docks to `XPerl_Player` and `XPerl_Target` or can be placed freely by dragging
+- Docks to `XPerl_Player` and `XPerl_Target` or can be placed freely by dragging. Docked bars sit below the lowest visible X-Perl part (creature type, combo points, XP/druid mana bar, buffs below the frame) and move along when that changes.
 - Width taken from the unit frame or fixed; height and spacing adjustable
 - Optionally shown only in combat
 

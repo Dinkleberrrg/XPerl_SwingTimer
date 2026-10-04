@@ -2,7 +2,7 @@
 ## Title: X-Perl |cFF40FF40SwingTimer|r
 ## Notes: Swing timers for main hand, off hand, ranged and target. Docks to the X-Perl unit frames.|nSettings: /xps or the button in the X-Perl options. Move: /xps unlock.
 ## Author: Dinkleberrrg (based on AttackBar by Udokus / Siventt)
-## Version: 1.1.0
+## Version: 1.2.0
 ## RequiredDeps: XPerl
 ## SavedVariables: XPerlSwingConfig
 

@@ -2,6 +2,10 @@
 
 Versions follow `MAJOR.MINOR.PATCH`. Each release is a git tag `v<version>`; older versions can be downloaded from the tag page on GitHub.
 
+## 1.2.0 – 2026-10-04
+- Docked bars now sit below the lowest visible X-Perl part instead of the fixed 220x60 main frame: creature type, combo points, stats frame (XP bar, druid mana bar, energy/mana ticker) and target buffs shown below the frame. Previously they could cover these.
+- The dock position follows layout changes on the fly (shapeshift, bars appearing, new buff rows, frame moved); "Distance to frame" is measured from that lowest part.
+
 ## 1.1.0 – 2026-10-04
 - Bars can be moved: `/xps unlock` / `/xps lock` or the new "Lock bars" option. Dragging a docked bar detaches it; the position is saved. `/xps reset` docks them again.
 - Fixed: turning off docking left the bar stuck to the unit frame, and after a reload it had no anchor at all and was invisible.
