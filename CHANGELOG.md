@@ -2,6 +2,9 @@
 
 Versions follow `MAJOR.MINOR.PATCH`. Each release is a git tag `v<version>`; older versions can be downloaded from the tag page on GitHub.
 
+## 1.4.2 – 2026-10-05
+- The "SwingTimer" button in the X-Perl options no longer covers the title and tabs. It now sits in a row below the options window, next to the other X-Perl module buttons (ManaTick).
+
 ## 1.4.1 – 2026-10-04
 - Fixed: old AttackBar bars kept appearing next to ours when AttackBar / AttackBarXPerl were still enabled. Their bars sit directly on UIParent and AttackBar showed them again on every swing; it is now switched off completely, with a chat hint to disable it.
 - Fixed: "Prototype font" without ShaguPlates installed broke the text ("Font not set" errors) and left bars frozen on screen. It now falls back to the default font.

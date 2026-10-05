@@ -228,6 +228,26 @@ function XPerl_SwingTimer_ToggleOptions()
     end
 end
 
+-- X-Perl module buttons (SwingTimer, ManaTick, ...) share one row that
+-- hangs below the bottom left edge of XPerl's options window, sorted by
+-- name, so they never cover the tabs or the title and never overlap each
+-- other, whichever module loads first.
+local function AddModuleButton(b)
+    local list = XPerl_Options.moduleButtons
+    if not list then list = {}; XPerl_Options.moduleButtons = list end
+    table.insert(list, b)
+    table.sort(list, function(x, y) return x:GetText() < y:GetText() end)
+    for i = 1, table.getn(list) do
+        local btn = list[i]
+        btn:ClearAllPoints()
+        if i == 1 then
+            btn:SetPoint("TOPLEFT", XPerl_Options, "BOTTOMLEFT", 12, 2)
+        else
+            btn:SetPoint("LEFT", list[i - 1], "RIGHT", 4, 0)
+        end
+    end
+end
+
 -- Hook a button into XPerl's options window as soon as it is loaded
 local hook = CreateFrame("Frame")
 hook:RegisterEvent("ADDON_LOADED")
@@ -235,9 +255,9 @@ hook:SetScript("OnEvent", function()
     if arg1 ~= "XPerl_Options" then return end
     if not XPerl_Options or XPerl_Options.swingButton then return end
     local b = CreateFrame("Button", nil, XPerl_Options, "UIPanelButtonTemplate")
-    b:SetWidth(110); b:SetHeight(21)
-    b:SetPoint("TOPRIGHT", XPerl_Options, "TOPRIGHT", -40, -16)
+    b:SetWidth(110); b:SetHeight(22)
     b:SetText("SwingTimer")
+    AddModuleButton(b)
     b:SetScript("OnClick", function() XPerl_SwingTimer_ToggleOptions() end)
     XPerl_Options.swingButton = b
     hook:UnregisterEvent("ADDON_LOADED")
